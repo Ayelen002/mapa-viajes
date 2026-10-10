@@ -1,0 +1,15 @@
+{
+  "name": "mapa-viajes",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Genera data.json con los lugares visitados desde Notion",
+  "scripts": {
+    "actualizar": "node scripts/actualizar.js"
+  },
+  "dependencies": {
+    "@turf/turf": "^7.2.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  }
+}
