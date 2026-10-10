@@ -1,0 +1,41 @@
+name: Actualizar mapa
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # todos los días, 09:00 UTC (06:00 en Argentina)
+  workflow_dispatch: # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+
+      - name: Leer Notion y generar data.json
+        run: node scripts/actualizar.js
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          NOTION_PLACE_PROP: "Lugar"
+          NOTION_DONE_PROP: "Realizado"
+          # "true" = contar solo filas con "Realizado" marcado; "false" = contar todas
+          SOLO_REALIZADOS: "false"
+          # Decimales de las coordenadas publicadas (1 ≈ 11 km)
+          DECIMALES: "1"
+
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git diff --staged --quiet || (git commit -m "Actualizar datos del mapa" && git push)
