@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Mapa de viajes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --u: calc(min(100vw, 150vh) / 1536);   /* 1 unidad del lienzo en píxeles */
+    --tinta: #4a3318;
+    --pergamino: #e3c993;
+  }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--pergamino); color: var(--tinta);
+    font-family: 'IM Fell English', Georgia, 'Times New Roman', serif;
+  }
+  #caja {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(100vw, 150vh); aspect-ratio: 3 / 2;
+  }
+  svg { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; }
+
+  .grat      { fill: none; stroke: #7a5a2a; stroke-opacity: .16; stroke-width: .6; vector-effect: non-scaling-stroke; }
+  .pais      { fill-opacity: .9; stroke: none; }
+  .pais:hover{ fill-opacity: 1; }
+  .costa     { fill: none; stroke: #3d5226; stroke-opacity: .75; stroke-width: .8; vector-effect: non-scaling-stroke; stroke-linejoin: round; pointer-events: none; }
+  .frontera  { fill: none; stroke: #3d5226; stroke-opacity: .45; stroke-width: .6; vector-effect: non-scaling-stroke; stroke-linejoin: round; pointer-events: none; }
+  .oceano    { font-style: italic; fill: #5b3b1c; pointer-events: none; transition: opacity .2s; }
+  .sello     { cursor: default; }
+  .sello.clic{ cursor: pointer; }
+  .sello text{ fill: #f6e7bf; font-weight: 600; text-anchor: middle; paint-order: stroke; stroke: rgba(30,12,4,.55); stroke-width: 1.6px; pointer-events: none; }
+  .titulo    { font-family: 'IM Fell English SC', 'IM Fell English', Georgia, serif; fill: #4a3318; letter-spacing: .04em; }
+  .leyenda text { fill: #4a3318; }
+  #capaFija  { pointer-events: none; }
+
+  #controles {
+    position: absolute; right: 7.4%; top: 8.2%;
+    display: flex; flex-direction: column; gap: calc(var(--u) * 8);
+  }
+  #controles button {
+    width: max(26px, calc(var(--u) * 46)); height: max(26px, calc(var(--u) * 46));
+    border-radius: 50%; border: 1.5px solid #5b3b1c; padding: 0;
+    background: radial-gradient(circle at 35% 30%, #f2dfae, #d9b878);
+    color: var(--tinta); font: inherit; font-size: max(14px, calc(var(--u) * 28)); line-height: 1;
+    cursor: pointer; box-shadow: 0 1px 3px rgba(60, 35, 10, .4);
+  }
+  #controles button:hover { background: radial-gradient(circle at 35% 30%, #f8e9c0, #e2c386); }
+  #tip {
+    position: absolute; pointer-events: none; opacity: 0; transition: opacity .12s;
+    padding: .25em .6em; border-radius: 4px; white-space: nowrap;
+    background: rgba(58, 36, 16, .93); color: #f3e3bd;
+    font-size: max(11px, calc(var(--u) * 22));
+  }
+  #aviso {
+    position: absolute; left: 50%; bottom: 7.5%; transform: translateX(-50%);
+    padding: .3em .8em; border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity .25s;
+    background: rgba(58, 36, 16, .9); color: #f3e3bd; font-size: max(11px, calc(var(--u) * 22));
+  }
+</style>
+</head>
+<body>
+<div id="caja">
+  <svg id="svg" viewBox="0 0 1536 1024" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa de los países visitados">
+    <defs>
+      <clipPath id="recorte"><rect x="70" y="60" width="1396" height="832"/></clipPath>
+      <radialGradient id="lacreOscuro" cx="35%" cy="30%" r="80%">
+        <stop offset="0" stop-color="#8d5333"/><stop offset=".55" stop-color="#5a2f18"/><stop offset="1" stop-color="#321809"/>
+      </radialGradient>
+      <radialGradient id="lacreAmbar" cx="35%" cy="30%" r="80%">
+        <stop offset="0" stop-color="#f0ac52"/><stop offset=".55" stop-color="#c9791c"/><stop offset="1" stop-color="#8a4a0e"/>
+      </radialGradient>
+      <filter id="sombra" x="-35%" y="-35%" width="170%" height="170%">
+        <feDropShadow dx="1.5" dy="2.5" stdDeviation="2.2" flood-color="#2a1608" flood-opacity=".55"/>
+      </filter>
+    </defs>
+    <image href="fondo.jpg" x="0" y="0" width="1536" height="1024" preserveAspectRatio="none"/>
+    <g id="capaMapa" clip-path="url(#recorte)"></g>
+    <g id="capaFija"></g>
+  </svg>
+  <div id="controles">
+    <button id="zmas" title="Acercar" aria-label="Acercar">+</button>
+    <button id="zmenos" title="Alejar" aria-label="Alejar">&minus;</button>
+    <button id="zreset" title="Ver todo el mundo" aria-label="Ver todo el mundo">&#8634;</button>
+  </div>
+  <div id="tip"></div>
+  <div id="aviso"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script>
+(() => {
+  // =====================================================================
+  //  CONFIGURACIÓN: lo que probablemente quieras cambiar está aquí
+  // =====================================================================
+  const CONFIG = {
+    titulo: 'El Mundo',
+
+    // Color de cada país según cuántos lugares visitaste ("desde" = mínimo del tramo)
+    tramos: [
+      { desde: 1,   color: '#b4cb86' },
+      { desde: 10,  color: '#8aae5f' },
+      { desde: 25,  color: '#5f8e3f' },
+      { desde: 50,  color: '#3b6a2a' },
+      { desde: 100, color: '#1f4218' },
+    ],
+    sinVisitar: '#d4d9b0',
+
+    // Sellos
+    radioAgrupacion: 54,     // distancia (en unidades del lienzo) para juntar puntos en un sello
+    solapamiento: 0.85,      // 1 = pueden tocarse; menor = se fusionan antes
+    umbralSelloOscuro: 12,   // desde cuántos lugares el sello es marrón oscuro (si no, ámbar)
+    zoomMax: 16,
+
+    // Etiquetas de océanos: [líneas de texto, longitud, latitud]
+    oceanos: [
+      [['Océano', 'Pacífico', 'Norte'], -148,  26],
+      [['Océano', 'Pacífico', 'Sur'],   -128, -30],
+      [['Océano', 'Atlántico', 'Norte'], -40,  30],
+      [['Océano', 'Atlántico', 'Sur'],   -18, -24],
+      [['Océano', 'Índico'],              78, -22],
+      [['Océano Austral'],                20, -63],
+    ],
+
+    // Fuente de los países (la misma que usa el script de Actions: mismos nombres)
+    urlMundo: 'https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json',
+  };
+
+  // =====================================================================
+  const W = 1536, H = 1024;
+  const AREA = { x0: 70, y0: 60, x1: 1466, y1: 892 };     // zona donde se mueve el mapa (la franja de abajo es para la leyenda)
+
+  const svg = d3.select('#svg');
+  const caja = document.getElementById('caja');
+  const tip = document.getElementById('tip');
+  const aviso = document.getElementById('aviso');
+
+  // ---------- utilidades ----------
+  const plural = (n) => `${n.toLocaleString('es-AR')} lugar${n === 1 ? '' : 'es'}`;
+  const radioSello = (n) => Math.min(46, 20 + 4.5 * Math.sqrt(n));
+
+  function colorPara(n) {
+    if (!n) return CONFIG.sinVisitar;
+    let c = CONFIG.tramos[0].color;
+    for (const t of CONFIG.tramos) if (n >= t.desde) c = t.color;
+    return c;
+  }
+
+  function mostrarTip(ev, texto) {
+    const r = caja.getBoundingClientRect();
+    tip.textContent = texto;
+    tip.style.left = (ev.clientX - r.left + 14) + 'px';
+    tip.style.top = (ev.clientY - r.top + 14) + 'px';
+    tip.style.opacity = 1;
+  }
+  const ocultarTip = () => { tip.style.opacity = 0; };
+
+  let avisoTimer;
+  function mostrarAviso(texto, ms = 1800) {
+    aviso.textContent = texto;
+    aviso.style.opacity = 1;
+    clearTimeout(avisoTimer);
+    avisoTimer = setTimeout(() => { aviso.style.opacity = 0; }, ms);
+  }
+
+  // ---------- agrupación de puntos en sellos ----------
+  function agrupar(puntos, T) {
+    const R = CONFIG.radioAgrupacion;
+    const cl = [];
+    for (const p of puntos) {
+      const sx = T.applyX(p.x), sy = T.applyY(p.y);
+      if (sx < AREA.x0 - 60 || sx > AREA.x1 + 60 || sy < AREA.y0 - 60 || sy > AREA.y1 + 60) continue;
+      let mejor = null, md = R;
+      for (const c of cl) {
+        const d = Math.hypot(c.x - sx, c.y - sy);
+        if (d < md) { md = d; mejor = c; }
+      }
+      if (mejor) {
+        mejor.x = (mejor.x * mejor.n + sx) / (mejor.n + 1);
+        mejor.y = (mejor.y * mejor.n + sy) / (mejor.n + 1);
+        mejor.n++; mejor.m.push(p);
+      } else {
+        cl.push({ x: sx, y: sy, n: 1, m: [p] });
+      }
+    }
+    // Fusionar sellos que quedarían muy solapados
+    let cambio = true;
+    while (cambio) {
+      cambio = false;
+      buscar:
+      for (let i = 0; i < cl.length; i++) {
+        for (let j = i + 1; j < cl.length; j++) {
+          const a = cl[i], b = cl[j];
+          const lim = CONFIG.solapamiento * (radioSello(a.n) + radioSello(b.n));
+          if (Math.hypot(a.x - b.x, a.y - b.y) < lim) {
+            const n = a.n + b.n;
+            a.x = (a.x * a.n + b.x * b.n) / n;
+            a.y = (a.y * a.n + b.y * b.n) / n;
+            a.n = n; a.m = a.m.concat(b.m);
+            cl.splice(j, 1);
+            cambio = true;
+            break buscar;
+          }
+        }
+      }
+    }
+    return cl;
+  }
+
+  // ---------- sello de lacre ----------
+  const lineaBlob = d3.line().curve(d3.curveBasisClosed);
+  function pathBlob(r, semilla) {
+    let s = semilla >>> 0;
+    const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+    const N = 16, pts = [];
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const rr = r * (1.0 + (rnd() - 0.5) * 0.16);
+      pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    return lineaBlob(pts);
+  }
+
+  function dibujarSello(g, c) {
+    const r = radioSello(c.n);
+    const oscuro = c.n >= CONFIG.umbralSelloOscuro;
+    const semilla = (Math.round(c.m[0].x * 31) * 73856093) ^ (Math.round(c.m[0].y * 17) * 19349663) ^ (c.n * 83492791);
+    g.append('path').attr('d', pathBlob(r * 1.04, semilla))
+      .attr('fill', oscuro ? 'url(#lacreOscuro)' : 'url(#lacreAmbar)')
+      .attr('stroke', oscuro ? '#2a1307' : '#7a400b').attr('stroke-width', 1.2)
+      .attr('filter', 'url(#sombra)');
+    g.append('circle').attr('r', r * 0.8).attr('fill', 'none')
+      .attr('stroke', '#f6e0a0').attr('stroke-opacity', .3).attr('stroke-width', 1.3);
+    g.append('ellipse').attr('cx', -r * 0.32).attr('cy', -r * 0.42).attr('rx', r * 0.34).attr('ry', r * 0.18)
+      .attr('transform', 'rotate(-30)').attr('fill', '#fff').attr('fill-opacity', .1);
+    const digitos = String(c.n).length;
+    const fs = r * (digitos <= 2 ? 0.98 : digitos === 3 ? 0.78 : 0.62);
+    g.append('text').attr('font-size', fs).attr('dy', '.35em').text(c.n.toLocaleString('es-AR'));
+  }
+
+  // ---------- brújula ----------
+  function dibujarBrujula(capa, cx, cy, R) {
+    const g = capa.append('g').attr('transform', `translate(${cx},${cy})`);
+    const tinta = '#3a2410', luz = '#e7d09a';
+    g.append('circle').attr('r', R).attr('fill', 'none').attr('stroke', tinta).attr('stroke-width', 1.6);
+    g.append('circle').attr('r', R * .93).attr('fill', 'none').attr('stroke', tinta).attr('stroke-width', .8);
+    g.append('circle').attr('r', R * .6).attr('fill', 'none').attr('stroke', tinta).attr('stroke-width', .6).attr('stroke-opacity', .6);
+    for (let i = 0; i < 64; i++) {
+      const a = (i * Math.PI) / 32, largo = i % 4 === 0 ? 1 : .55;
+      const r1 = R * .93, r2 = R * (.93 + .07 * largo);
+      g.append('line').attr('x1', Math.sin(a) * r1).attr('y1', -Math.cos(a) * r1)
+        .attr('x2', Math.sin(a) * r2).attr('y2', -Math.cos(a) * r2)
+        .attr('stroke', tinta).attr('stroke-width', i % 4 === 0 ? 1 : .6);
+    }
+    const punta = (grados, largo, ancho) => {
+      const t = (grados * Math.PI) / 180;
+      const tip = [Math.sin(t) * largo, -Math.cos(t) * largo];
+      const b1 = [Math.cos(t) * ancho, Math.sin(t) * ancho];
+      const b2 = [-b1[0], -b1[1]];
+      g.append('path').attr('d', `M${tip}L0,0L${b1}Z`).attr('fill', luz).attr('stroke', tinta).attr('stroke-width', .7).attr('stroke-linejoin', 'round');
+      g.append('path').attr('d', `M${tip}L0,0L${b2}Z`).attr('fill', tinta).attr('stroke', tinta).attr('stroke-width', .7).attr('stroke-linejoin', 'round');
+    };
+    for (let i = 0; i < 8; i++) punta(22.5 + i * 45, R * .42, R * .05);
+    for (let i = 0; i < 4; i++) punta(45 + i * 90, R * .66, R * .075);
+    for (let i = 0; i < 4; i++) punta(i * 90, R * .93, R * .105);
+    g.append('circle').attr('r', R * .07).attr('fill', luz).attr('stroke', tinta).attr('stroke-width', 1);
+    g.append('circle').attr('r', R * .025).attr('fill', tinta);
+    const letras = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]];
+    for (const [t, dx, dy] of letras) {
+      g.append('text').attr('x', dx * R * 1.2).attr('y', dy * R * 1.2).attr('dy', '.35em')
+        .attr('text-anchor', 'middle').attr('class', 'titulo').attr('font-size', R * (t === 'N' ? .34 : .26)).text(t);
+    }
+  }
+
+  // ---------- arranque ----------
+  const peticiones = [
+    d3.json(CONFIG.urlMundo),
+    d3.json('data.json?v=' + Math.floor(Date.now() / 60000)).catch(() => null),
+  ];
+  Promise.all(peticiones).then(([mundo, datos]) => {
+    if (!datos) mostrarAviso('No se pudo cargar data.json', 6000);
+    iniciar(mundo, datos || { updated: '', countries: {}, points: [] });
+  }).catch((e) => {
+    console.error(e);
+    mostrarAviso('No se pudo cargar el mapa del mundo', 8000);
+  });
+
+  function iniciar(mundo, datos) {
+    const cuentas = datos.countries || {};
+    const totalLugares = Object.values(cuentas).reduce((a, b) => a + b, 0);
+    const totalPaises = Object.keys(cuentas).length;
+
+    const paises = topojson.feature(mundo, mundo.objects.countries).features;
+    const costa = topojson.mesh(mundo, mundo.objects.countries, (a, b) => a === b);
+    const fronteras = topojson.mesh(mundo, mundo.objects.countries, (a, b) => a !== b);
+
+    // Proyección: cambia aquí por d3.geoEqualEarth() u otra del núcleo de d3 si prefieres
+    const proy = d3.geoNaturalEarth1();
+    proy.fitExtent([[AREA.x0, AREA.y0 + 40], [AREA.x1, AREA.y1]], { type: 'Sphere' });
+    const ruta = d3.geoPath(proy);
+
+    const capaMapa = svg.select('#capaMapa');
+    const gMapa = capaMapa.append('g');
+    const capaFija = svg.select('#capaFija');
+
+    gMapa.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', ruta);
+
+    gMapa.append('g').selectAll('path').data(paises).join('path')
+      .attr('class', 'pais').attr('d', ruta)
+      .attr('fill', (d) => colorPara(cuentas[d.properties.name] || 0))
+      .on('pointermove', (ev, d) => {
+        const n = cuentas[d.properties.name] || 0;
+        mostrarTip(ev, n ? `${d.properties.name} · ${plural(n)}` : d.properties.name);
+      })
+      .on('pointerleave', ocultarTip);
+
+    gMapa.append('path').datum(fronteras).attr('class', 'frontera').attr('d', ruta);
+    gMapa.append('path').datum(costa).attr('class', 'costa').attr('d', ruta);
+
+    const etiquetas = gMapa.append('g').selectAll('text').data(CONFIG.oceanos).join('text')
+      .attr('class', 'oceano').attr('text-anchor', 'middle').attr('font-size', 27)
+      .attr('transform', (d) => { const [x, y] = proy([d[1], d[2]]); return `translate(${x},${y})`; });
+    etiquetas.each(function (d) {
+      const lineas = d[0];
+      const t = d3.select(this);
+      lineas.forEach((txt, i) => t.append('tspan').attr('x', 0).attr('dy', i === 0 ? `${-(lineas.length - 1) * 0.5 * 1.05}em` : '1.05em').text(txt));
+    });
+
+    const gSellos = capaMapa.append('g');
+
+    // puntos proyectados (data.json guarda [lat, lon, país])
+    const puntos = (datos.points || []).map(([lat, lon, pais]) => {
+      const [x, y] = proy([lon, lat]);
+      return { x, y, pais };
+    }).sort((a, b) => a.x - b.x || a.y - b.y);
+
+    // ---------- elementos fijos: título, leyenda, brújula ----------
+    const titulo = capaFija.append('g');
+    const tx = AREA.x0 + 60, ty = AREA.y0 + 62;
+    const tt = titulo.append('text').attr('class', 'titulo').attr('x', tx + 70).attr('y', ty).attr('font-size', 54).text(CONFIG.titulo.toUpperCase());
+    const medirTitulo = () => {
+      const bb = tt.node().getBBox();
+      titulo.selectAll('.adorno').remove();
+      const yl = ty - bb.height * 0.3;
+      titulo.append('line').attr('class', 'adorno').attr('x1', tx - 10).attr('x2', bb.x - 14).attr('y1', yl).attr('y2', yl).attr('stroke', '#4a3318').attr('stroke-width', 1.2);
+      titulo.append('line').attr('class', 'adorno').attr('x1', bb.x + bb.width + 14).attr('x2', bb.x + bb.width + 74).attr('y1', yl).attr('y2', yl).attr('stroke', '#4a3318').attr('stroke-width', 1.2);
+      titulo.append('path').attr('class', 'adorno').attr('d', `M${bb.x + bb.width / 2 - 44},${ty + 16} q22,-10 44,0 q22,10 44,0`).attr('fill', 'none').attr('stroke', '#4a3318').attr('stroke-width', 1.2);
+    };
+    medirTitulo();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(medirTitulo);
+
+    // resumen bajo el título
+    titulo.append('text').attr('x', tx - 10).attr('y', ty + 56).attr('font-size', 22).attr('font-style', 'italic').attr('fill', '#4a3318')
+      .text(`${plural(totalLugares)} · ${totalPaises} ${totalPaises === 1 ? 'país' : 'países'}`);
+
+    // leyenda en una franja bajo el mapa (no tapa nada al hacer zoom)
+    const filas = CONFIG.tramos.map((t, i) => {
+      const sig = CONFIG.tramos[i + 1];
+      return { color: t.color, texto: sig ? (sig.desde - 1 === t.desde ? `${t.desde}` : `${t.desde}–${sig.desde - 1}`) : `${t.desde}+` };
+    });
+    filas.unshift({ color: CONFIG.sinVisitar, texto: 'Sin visitar' });
+    const ley = capaFija.append('g').attr('class', 'leyenda');
+    function dibujarLeyenda() {
+      ley.selectAll('*').remove();
+      const fondo = ley.append('rect').attr('rx', 6).attr('fill', '#ecd9a6').attr('fill-opacity', .5).attr('stroke', '#8a6a3a').attr('stroke-opacity', .55);
+      const yBase = 936;
+      let x = 0;
+      const t0 = ley.append('text').attr('x', x).attr('y', yBase).attr('font-size', 24).attr('font-style', 'italic').text('Lugares visitados');
+      x += t0.node().getComputedTextLength() + 30;
+      for (const f of filas) {
+        ley.append('rect').attr('x', x).attr('y', yBase - 15).attr('width', 40).attr('height', 18)
+          .attr('fill', f.color).attr('fill-opacity', .9).attr('stroke', '#3d5226').attr('stroke-opacity', .7);
+        const t = ley.append('text').attr('x', x + 50).attr('y', yBase).attr('font-size', 21).text(f.texto);
+        x += 50 + t.node().getComputedTextLength() + 26;
+      }
+      const ancho = x - 26;
+      const dx = (W - ancho) / 2;
+      ley.selectAll('text, rect:not(:first-child)').each(function () {
+        const e = d3.select(this);
+        e.attr('x', +e.attr('x') + dx);
+      });
+      fondo.attr('x', dx - 18).attr('y', yBase - 36).attr('width', ancho + 36).attr('height', 52);
+    }
+    dibujarLeyenda();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(dibujarLeyenda);
+
+    const gBrujula = capaFija.append('g');
+    dibujarBrujula(gBrujula, 1352, 790, 70);
+
+    // ---------- zoom y sellos ----------
+    let T = d3.zoomIdentity;
+    const zoom = d3.zoom()
+      .scaleExtent([1, CONFIG.zoomMax])
+      .extent([[AREA.x0, AREA.y0], [AREA.x1, AREA.y1]])
+      .translateExtent([[AREA.x0, AREA.y0], [AREA.x1, AREA.y1]])
+      .filter((ev) => (ev.type === 'wheel' ? (ev.ctrlKey || ev.metaKey) : (!ev.ctrlKey && !ev.button)))
+      .on('zoom', (ev) => { T = ev.transform; pedirDibujo(); });
+    svg.call(zoom).on('dblclick.zoom', null);
+
+    // Sin Ctrl, la rueda sigue desplazando la página de Notion; solo avisamos
+    svg.node().addEventListener('wheel', (ev) => {
+      if (!(ev.ctrlKey || ev.metaKey)) mostrarAviso('Usa Ctrl + rueda (o los botones + / −) para hacer zoom');
+    }, { passive: true });
+
+    document.getElementById('zmas').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1.8);
+    document.getElementById('zmenos').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1 / 1.8);
+    document.getElementById('zreset').onclick = () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+
+    function zoomA(c) {
+      if (T.k >= CONFIG.zoomMax - 0.01) return;
+      const xs = c.m.map((p) => p.x), ys = c.m.map((p) => p.y);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const ancho = Math.max(x1 - x0, 1), alto = Math.max(y1 - y0, 1);
+      let k = 0.6 / Math.max(ancho / (AREA.x1 - AREA.x0), alto / (AREA.y1 - AREA.y0));
+      k = Math.min(CONFIG.zoomMax, Math.max(k, T.k * 1.8));
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const tr = d3.zoomIdentity.translate((AREA.x0 + AREA.x1) / 2 - k * cx, (AREA.y0 + AREA.y1) / 2 - k * cy).scale(k);
+      svg.transition().duration(700).call(zoom.transform, tr);
+    }
+
+    let pendiente = false;
+    function pedirDibujo() {
+      if (pendiente) return;
+      pendiente = true;
+      requestAnimationFrame(() => { pendiente = false; dibujar(); });
+    }
+
+    function dibujar() {
+      gMapa.attr('transform', T);
+      etiquetas.style('opacity', T.k < 2.2 ? .85 : 0);
+      // título y brújula se desvanecen al acercar para no tapar el mapa
+      const op = Math.max(0, Math.min(1, 1 - (T.k - 1.15) / 0.7));
+      titulo.style('opacity', op);
+      gBrujula.style('opacity', op);
+
+      const grupos = agrupar(puntos, T);
+      gSellos.selectAll('g.sello').remove();
+      for (const c of grupos) {
+        const g = gSellos.append('g').attr('class', 'sello' + (c.n > 1 && T.k < CONFIG.zoomMax - 0.01 ? ' clic' : ''))
+          .attr('transform', `translate(${c.x},${c.y})`);
+        dibujarSello(g, c);
+        g.on('click', () => zoomA(c))
+          .on('pointermove', (ev) => mostrarTip(ev, plural(c.n)))
+          .on('pointerleave', ocultarTip);
+      }
+    }
+    dibujar();
+  }
+})();
+</script>
+</body>
+</html>
