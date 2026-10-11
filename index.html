@@ -127,6 +127,19 @@
       [['Océano Austral'],                20, -63],
     ],
 
+    // Vistas por región: se eligen con ?region=clave en la URL (ej.: index.html?region=sudamerica)
+    // caja = [[lonMin, latMin], [lonMax, latMax]]. Si no hay región, se ve el mundo entero.
+    regiones: {
+      mundo:        { nombre: 'El Mundo',     caja: null },
+      america:      { nombre: 'América',      caja: [[-170, -57], [-33, 75]] },
+      norteamerica: { nombre: 'Norteamérica', caja: [[-170, 6],   [-50, 75]] },
+      sudamerica:   { nombre: 'Sudamérica',   caja: [[-82, -57],  [-33, 14]] },
+      europa:       { nombre: 'Europa',       caja: [[-25, 34],   [45, 72]] },
+      africa:       { nombre: 'África',       caja: [[-20, -36],  [52, 38]] },
+      asia:         { nombre: 'Asia',         caja: [[26, -11],   [146, 78]] },
+      oceania:      { nombre: 'Oceanía',      caja: [[110, -48],  [180, 0]] },
+    },
+
     // Fuente de los países (la misma que usa el script de Actions: mismos nombres)
     urlMundo: 'https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json',
   };
@@ -292,8 +305,22 @@
 
   function iniciar(mundo, datos) {
     const cuentas = datos.countries || {};
-    const totalLugares = Object.values(cuentas).reduce((a, b) => a + b, 0);
-    const totalPaises = Object.keys(cuentas).length;
+
+    // Región elegida en la URL: ?region=sudamerica  (y opcionalmente &titulo=Mi%20texto)
+    const params = new URLSearchParams(location.search);
+    const region = CONFIG.regiones[(params.get('region') || 'mundo').toLowerCase()] || CONFIG.regiones.mundo;
+    const tituloPagina = params.get('titulo') || region.nombre || CONFIG.titulo;
+
+    let totalLugares, totalPaises;
+    if (region.caja) {
+      const [[x0, y0], [x1, y1]] = region.caja;
+      const dentro = (datos.points || []).filter(([la, lo]) => lo >= x0 && lo <= x1 && la >= y0 && la <= y1);
+      totalLugares = dentro.length;
+      totalPaises = new Set(dentro.map((p) => p[2])).size;
+    } else {
+      totalLugares = Object.values(cuentas).reduce((a, b) => a + b, 0);
+      totalPaises = Object.keys(cuentas).length;
+    }
 
     const paises = topojson.feature(mundo, mundo.objects.countries).features;
     const costa = topojson.mesh(mundo, mundo.objects.countries, (a, b) => a === b);
@@ -342,7 +369,7 @@
     // ---------- elementos fijos: título, leyenda, brújula ----------
     const titulo = capaFija.append('g');
     const tx = AREA.x0 + 60, ty = AREA.y0 + 62;
-    const tt = titulo.append('text').attr('class', 'titulo').attr('x', tx + 70).attr('y', ty).attr('font-size', 54).text(CONFIG.titulo.toUpperCase());
+    const tt = titulo.append('text').attr('class', 'titulo').attr('x', tx + 70).attr('y', ty).attr('font-size', 54).text(tituloPagina.toUpperCase());
     const medirTitulo = () => {
       const bb = tt.node().getBBox();
       titulo.selectAll('.adorno').remove();
@@ -394,6 +421,23 @@
 
     // ---------- zoom y sellos ----------
     let T = d3.zoomIdentity;
+    let T0 = d3.zoomIdentity;   // vista inicial (la de la región, o el mundo entero)
+    if (region.caja) {
+      const [[lo0, la0], [lo1, la1]] = region.caja;
+      const muestras = [];
+      for (let i = 0; i <= 24; i++) {
+        const f = i / 24, lo = lo0 + (lo1 - lo0) * f, la = la0 + (la1 - la0) * f;
+        muestras.push([lo, la0], [lo, la1], [lo0, la], [lo1, la]);
+      }
+      const xy = muestras.map((p) => proy(p));
+      const bx0 = d3.min(xy, (d) => d[0]), bx1 = d3.max(xy, (d) => d[0]);
+      const by0 = d3.min(xy, (d) => d[1]), by1 = d3.max(xy, (d) => d[1]);
+      const k = Math.min(CONFIG.zoomMax, Math.max(1, 0.94 * Math.min((AREA.x1 - AREA.x0) / (bx1 - bx0), (AREA.y1 - AREA.y0) / (by1 - by0))));
+      const clamp = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+      const tx = clamp((AREA.x0 + AREA.x1) / 2 - k * (bx0 + bx1) / 2, AREA.x1 - k * AREA.x1, AREA.x0 - k * AREA.x0);
+      const ty = clamp((AREA.y0 + AREA.y1) / 2 - k * (by0 + by1) / 2, AREA.y1 - k * AREA.y1, AREA.y0 - k * AREA.y0);
+      T0 = d3.zoomIdentity.translate(tx, ty).scale(k);
+    }
     const zoom = d3.zoom()
       .scaleExtent([1, CONFIG.zoomMax])
       .extent([[AREA.x0, AREA.y0], [AREA.x1, AREA.y1]])
@@ -409,7 +453,7 @@
 
     document.getElementById('zmas').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1.8);
     document.getElementById('zmenos').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1 / 1.8);
-    document.getElementById('zreset').onclick = () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    document.getElementById('zreset').onclick = () => svg.transition().duration(500).call(zoom.transform, T0);
 
     function zoomA(c) {
       if (T.k >= CONFIG.zoomMax - 0.01) return;
@@ -433,8 +477,8 @@
     function dibujar() {
       gMapa.attr('transform', T);
       etiquetas.style('opacity', T.k < 2.2 ? .85 : 0);
-      // título y brújula se desvanecen al acercar para no tapar el mapa
-      const op = Math.max(0, Math.min(1, 1 - (T.k - 1.15) / 0.7));
+      // título y brújula se desvanecen al acercar (respecto a la vista inicial) para no tapar el mapa
+      const op = Math.max(0, Math.min(1, 1 - (T.k / T0.k - 1.15) / 0.7));
       titulo.style('opacity', op);
       gBrujula.style('opacity', op);
 
@@ -449,6 +493,7 @@
           .on('pointerleave', ocultarTip);
       }
     }
+    svg.call(zoom.transform, T0);
     dibujar();
   }
 })();
